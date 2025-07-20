@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+pydantic
+httpx
+jinja2
+weasyprint
+openai
+apscheduler>=3.10.0
+python-dotenv
+weasyprint
+boto3
