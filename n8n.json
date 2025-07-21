@@ -1,0 +1,165 @@
+{
+"name": "MVP AI-Act Ready Desk Full Workflow",
+"active": false,
+"nodes": \[
+{
+"parameters": {
+"httpMethod": "POST",
+"path": "upload",
+"options": {
+"authentication": {
+"type": "basicAuth"
+}
+}
+},
+"name": "Webhook\_CSV\_Upload",
+"type": "n8n-nodes-base.webhook",
+"typeVersion": 1,
+"position": \[200, 200]
+},
+{
+"parameters": {
+"functionCode": "const csv = items\[0].binary.data;
+const parsed = await this.helpers.parseCsv(csv.data);
+return parsed.map(row => ({ json: row }));"
+},
+"name": "Parse\_CSV",
+"type": "n8n-nodes-base.function",
+"typeVersion": 1,
+"position": \[400, 200]
+},
+{
+"parameters": {
+"url": "https\://mock-api/classify",
+"method": "POST",
+"jsonParameters": true,
+"bodyParametersJson": "={{ { system: \$json } }}"
+},
+"name": "HTTP\_Classify\_API",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 1,
+"position": \[600, 200]
+},
+{
+"parameters": {
+"database": "={{ \$credentials.sqlite.database ?? '' }}",
+"table": "system",
+"columns": "name, description, category, dpia\_required, risks",
+"values": "={{ `$json.name, $json.description, '${$node[\"HTTP_Classify_API\"].json.category}', ${$node[\"HTTP_Classify_API\"].json.dpia_required}, '${$node[\"HTTP_Classify_API\"].json.risks.join(',')}'` }}"
+},
+"name": "SQLite\_Insert\_System",
+"type": "n8n-nodes-base.sqlite",
+"typeVersion": 1,
+"position": \[800, 200]
+},
+{
+"parameters": {
+"functionCode": "// Génération de 3 documents PDF pour chaque système\nreturn items.map(item => ({json: { systemId: item.json.id, templates: \['registre', 'DPIA', 'politique']}}));"
+},
+"name": "Generate\_PDF\_Templates",
+"type": "n8n-nodes-base.function",
+"typeVersion": 1,
+"position": \[1000, 200]
+},
+{
+"parameters": {
+"url": "https\://pdf-service/generate",
+"method": "POST",
+"jsonParameters": true,
+"bodyParametersJson": "={{ { systemId: \$json.systemId, template: \$json.templates } }}",
+"options": {}
+},
+"name": "HTTP\_Generate\_PDF",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 1,
+"position": \[1200, 200]
+},
+{
+"parameters": {
+"database": "={{ \$credentials.sqlite.database ?? '' }}",
+"table": "document",
+"columns": "system\_id, type, url, generated\_at",
+"values": "={{ `${$json.systemId}, '${$json.template}', '${$json.pdfUrl}', '${new Date().toISOString()}'` }}"
+},
+"name": "SQLite\_Insert\_Document",
+"type": "n8n-nodes-base.sqlite",
+"typeVersion": 1,
+"position": \[1400, 200]
+},
+{
+"parameters": {
+"functionCode": "// Simulation validation juridique\nreturn items.map(item => ({json: { systemId: item.json.systemId, status: 'validated', validatedAt: new Date().toISOString() }}));"
+},
+"name": "Simulate\_Validation",
+"type": "n8n-nodes-base.function",
+"typeVersion": 1,
+"position": \[1600, 200]
+},
+{
+"parameters": {
+"database": "={{ \$credentials.sqlite.database ?? '' }}",
+"table": "validation",
+"columns": "system\_id, status, validated\_at",
+"values": "={{ `${$json.systemId}, '${$json.status}', '${$json.validatedAt}'` }}"
+},
+"name": "SQLite\_Insert\_Validation",
+"type": "n8n-nodes-base.sqlite",
+"typeVersion": 1,
+"position": \[1800, 200]
+},
+{
+"parameters": {
+"triggerTimes": \[],
+"cronExpression": "0 0 1 \*/6 \*"
+},
+"name": "Cron\_Semiannual",
+"type": "n8n-nodes-base.cron",
+"typeVersion": 1,
+"position": \[200, 400]
+},
+{
+"parameters": {
+"functionCode": "// Récupère les systèmes nécessitant suivi\nreturn \[{json: { notification: 'Rappel semestriel pour suivi AI Act'}}];"
+},
+"name": "Prepare\_Followup\_Notification",
+"type": "n8n-nodes-base.function",
+"typeVersion": 1,
+"position": \[400, 400]
+},
+{
+"parameters": {
+"resource": "email",
+"operation": "send",
+"fromEmail": "[noreply@example.com](mailto:noreply@example.com)",
+"toEmail": "[legal-team@example.com](mailto:legal-team@example.com)",
+"subject": "Suivi semestriel AI Act",
+"text": "={{ \$json.notification }}"
+},
+"name": "Send\_Followup\_Email",
+"type": "n8n-nodes-base.emailSend",
+"typeVersion": 1,
+"position": \[600, 400]
+}
+],
+"connections": {
+"Webhook\_CSV\_Upload": { "main": \[\[{"node":"Parse\_CSV","type":"main","index":0}]] },
+"Parse\_CSV": { "main": \[\[{"node":"HTTP\_Classify\_API","type":"main","index":0}]] },
+"HTTP\_Classify\_API": { "main": \[\[{"node":"SQLite\_Insert\_System","type":"main","index":0}]] },
+"SQLite\_Insert\_System": { "main": \[\[{"node":"Generate\_PDF\_Templates","type":"main","index":0}]] },
+"Generate\_PDF\_Templates": { "main": \[\[{"node":"HTTP\_Generate\_PDF","type":"main","index":0}]] },
+"HTTP\_Generate\_PDF": { "main": \[\[{"node":"SQLite\_Insert\_Document","type":"main","index":0}]] },
+"SQLite\_Insert\_Document": { "main": \[\[{"node":"Simulate\_Validation","type":"main","index":0}]] },
+"Simulate\_Validation": { "main": \[\[{"node":"SQLite\_Insert\_Validation","type":"main","index":0}]] },
+"Cron\_Semiannual": { "main": \[\[{"node":"Prepare\_Followup\_Notification","type":"main","index":0}]] },
+"Prepare\_Followup\_Notification": { "main": \[\[{"node":"Send\_Followup\_Email","type":"main","index":0}]] }
+},
+"settings": {},
+"credentials": {
+"smtpEmail": {
+"id": "YOUR\_SMTP\_CREDS\_ID"
+},
+"sqlite": {
+"id": "YOUR\_SQLITE\_CREDS\_ID"
+}
+}
+}
